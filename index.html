@@ -100,12 +100,16 @@
           actionText = `parked at Floor ${floorNum}`;
         }
 
+        const now = new Date();
+        const formattedDate = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
         const historyEntry = {
           id: Date.now().toString(),
           carName: carObj.name,
           action: actionText,
           user: userName,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: `${formattedDate}, ${formattedTime}`
         };
 
         db.ref('parkingData/assignments').set(updatedAssignments);
