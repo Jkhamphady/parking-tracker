@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Parking Tracker</title>
   
-  <!-- React & ReactDOM CDNs -->
+  <!-- React & ReactDOM CDN -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   
@@ -14,9 +14,10 @@
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Firebase Compatibility SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans">
 
@@ -24,6 +25,24 @@
 
   <script type="text/babel">
     const { useState, useEffect } = React;
+
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyAPLPonHUHgAzPb62LqLZIK18tj3Mmwa60",
+      authDomain: "parking-tracker-32cd1.firebaseapp.com",
+      databaseURL: "https://parking-tracker-32cd1-default-rtdb.firebaseio.com",
+      projectId: "parking-tracker-32cd1",
+      storageBucket: "parking-tracker-32cd1.firebasestorage.app",
+      messagingSenderId: "57297376259",
+      appId: "1:57297376259:web:dc4cb2d98e56572f64ea36",
+      measurementId: "G-PFKLB7B444"
+    };
+
+    // Initialize Firebase
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
 
     const DEFAULT_CARS = [
       { id: 'c1', name: 'Infiniti', color: 'bg-amber-500' },
@@ -36,51 +55,48 @@
       const [userName, setUserName] = useState(() => localStorage.getItem('pt_user') || 'Husband');
       const [activeTab, setActiveTab] = useState('tracker');
 
-      const [cars, setCars] = useState(() => {
-        const saved = localStorage.getItem('pt_cars');
-        return saved ? JSON.parse(saved) : DEFAULT_CARS;
-      });
-
-      const [floors, setFloors] = useState(() => {
-        const saved = localStorage.getItem('pt_floors');
-        return saved ? JSON.parse(saved) : DEFAULT_FLOORS;
-      });
-
-      const [assignments, setAssignments] = useState(() => {
-        const saved = localStorage.getItem('pt_assignments');
-        return saved ? JSON.parse(saved) : { c1: 4, c2: 7 };
-      });
+      const [cars, setCars] = useState(DEFAULT_CARS);
+      const [floors, setFloors] = useState(DEFAULT_FLOORS);
+      const [assignments, setAssignments] = useState({});
+      const [history, setHistory] = useState([]);
 
       const [selectedCarId, setSelectedCarId] = useState('c1');
-      const [history, setHistory] = useState(() => {
-        const saved = localStorage.getItem('pt_history');
-        return saved ? JSON.parse(saved) : [];
-      });
-
       const [newCarName, setNewCarName] = useState('');
       const [newFloorNum, setNewFloorNum] = useState('');
 
+      // Realtime listener for Firebase sync
+      useEffect(() => {
+        const parkingRef = db.ref('parkingData');
+        parkingRef.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            if (data.cars) setCars(data.cars);
+            if (data.floors) setFloors(data.floors);
+            if (data.assignments) setAssignments(data.assignments);
+            if (data.history) setHistory(Object.values(data.history).reverse());
+          }
+        });
+
+        return () => parkingRef.off();
+      }, []);
+
       useEffect(() => {
         localStorage.setItem('pt_user', userName);
-        localStorage.setItem('pt_cars', JSON.stringify(cars));
-        localStorage.setItem('pt_floors', JSON.stringify(floors));
-        localStorage.setItem('pt_assignments', JSON.stringify(assignments));
-        localStorage.setItem('pt_history', JSON.stringify(history));
-      }, [userName, cars, floors, assignments, history]);
+      }, [userName]);
 
       const handleFloorClick = (floorNum) => {
         const currentFloor = assignments[selectedCarId];
         const carObj = cars.find(c => c.id === selectedCarId);
         if (!carObj) return;
 
-        let newAssignments = { ...assignments };
+        let updatedAssignments = { ...assignments };
         let actionText = '';
 
         if (currentFloor === floorNum) {
-          delete newAssignments[selectedCarId];
+          delete updatedAssignments[selectedCarId];
           actionText = `vacated Floor ${floorNum}`;
         } else {
-          newAssignments[selectedCarId] = floorNum;
+          updatedAssignments[selectedCarId] = floorNum;
           actionText = `parked at Floor ${floorNum}`;
         }
 
@@ -92,8 +108,8 @@
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
 
-        setAssignments(newAssignments);
-        setHistory([historyEntry, ...history].slice(0, 30));
+        db.ref('parkingData/assignments').set(updatedAssignments);
+        db.ref('parkingData/history').push(historyEntry);
       };
 
       const handleAddCar = (e) => {
@@ -105,7 +121,8 @@
           name: newCarName.trim(),
           color: colors[cars.length % colors.length]
         };
-        setCars([...cars, newCar]);
+        const updatedCars = [...cars, newCar];
+        db.ref('parkingData/cars').set(updatedCars);
         setNewCarName('');
       };
 
@@ -113,7 +130,8 @@
         e.preventDefault();
         const num = parseInt(newFloorNum);
         if (isNaN(num) || floors.includes(num)) return;
-        setFloors([...floors, num].sort((a, b) => a - b));
+        const updatedFloors = [...floors, num].sort((a, b) => a - b);
+        db.ref('parkingData/floors').set(updatedFloors);
         setNewFloorNum('');
       };
 
@@ -259,9 +277,9 @@
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {history.map((item) => (
+                    {history.map((item, idx) => (
                       <div 
-                        key={item.id} 
+                        key={item.id || idx} 
                         className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between"
                       >
                         <div>
