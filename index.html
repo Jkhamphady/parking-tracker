@@ -64,7 +64,7 @@
       const [newCarName, setNewCarName] = useState('');
       const [newFloorNum, setNewFloorNum] = useState('');
 
-      // Realtime listener for Firebase sync
+      // Realtime listener for Firebase sync & auto-initialization
       useEffect(() => {
         const parkingRef = db.ref('parkingData');
         parkingRef.on('value', (snapshot) => {
@@ -72,9 +72,23 @@
           if (data) {
             if (data.cars) setCars(data.cars);
             if (data.floors) setFloors(data.floors);
-            if (data.assignments) setAssignments(data.assignments);
-            if (data.history) setHistory(Object.values(data.history).reverse());
+            if (data.assignments) setAssignments(data.assignments || {});
+            if (data.history) {
+              setHistory(Object.values(data.history).reverse());
+            } else {
+              setHistory([]);
+            }
+          } else {
+            // Auto-initialize empty database
+            parkingRef.set({
+              cars: DEFAULT_CARS,
+              floors: DEFAULT_FLOORS,
+              assignments: {},
+              history: {}
+            });
           }
+        }, (error) => {
+          console.error("Firebase read error:", error);
         });
 
         return () => parkingRef.off();
@@ -112,8 +126,8 @@
           timestamp: `${formattedDate}, ${formattedTime}`
         };
 
-        db.ref('parkingData/assignments').set(updatedAssignments);
-        db.ref('parkingData/history').push(historyEntry);
+        db.ref('parkingData/assignments').set(updatedAssignments).catch(err => console.error(err));
+        db.ref('parkingData/history').push(historyEntry).catch(err => console.error(err));
       };
 
       const handleAddCar = (e) => {
@@ -126,7 +140,7 @@
           color: colors[cars.length % colors.length]
         };
         const updatedCars = [...cars, newCar];
-        db.ref('parkingData/cars').set(updatedCars);
+        db.ref('parkingData/cars').set(updatedCars).catch(err => console.error(err));
         setNewCarName('');
       };
 
@@ -135,7 +149,7 @@
         const num = parseInt(newFloorNum);
         if (isNaN(num) || floors.includes(num)) return;
         const updatedFloors = [...floors, num].sort((a, b) => a - b);
-        db.ref('parkingData/floors').set(updatedFloors);
+        db.ref('parkingData/floors').set(updatedFloors).catch(err => console.error(err));
         setNewFloorNum('');
       };
 
